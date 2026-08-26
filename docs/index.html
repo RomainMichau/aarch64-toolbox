@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AArch64 Toolbox — Instruction Encoder &amp; Decoder</title>
-  <meta name="description" content="Free browser tool to encode and decode AArch64's integer core and atomics bit by bit, plus a number converter and a full instruction and register reference card.">
+  <title>AArch64 / ARM64 Instruction Encoder and Decoder</title>
+  <meta name="description" content="Decode an AArch64 (ARM64) machine word into the instruction it means, or build one field by field in the browser. Full A64 reference: 244 instruction forms, 28 word layouts, registers and condition codes.">
   <link rel="canonical" href="https://romainmichau.github.io/aarch64-toolbox/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="AArch64 Toolbox — Instruction Encoder & Decoder">
-  <meta property="og:description" content="Encode and decode AArch64's integer core and atomics in the browser, plus a number converter and instruction/register reference.">
+  <meta property="og:title" content="AArch64 / ARM64 Instruction Encoder and Decoder">
+  <meta property="og:description" content="Decode an AArch64 (ARM64) machine word into the instruction it means, or build one field by field in the browser. Full A64 reference: 244 instruction forms, 28 word layouts, registers and condition codes.">
   <meta property="og:url" content="https://romainmichau.github.io/aarch64-toolbox/">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="AArch64 Toolbox — Instruction Encoder & Decoder">
-  <meta name="twitter:description" content="Encode and decode AArch64's integer core and atomics in the browser, plus a number converter and instruction/register reference.">
+  <meta name="twitter:title" content="AArch64 / ARM64 Instruction Encoder and Decoder">
+  <meta name="twitter:description" content="Decode an AArch64 (ARM64) machine word into the instruction it means, or build one field by field in the browser. Full A64 reference: 244 instruction forms, 28 word layouts, registers and condition codes.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script type="application/ld+json">
   {
@@ -20,7 +20,7 @@
     "@type": "WebApplication",
     "name": "AArch64 Toolbox",
     "url": "https://romainmichau.github.io/aarch64-toolbox/",
-    "description": "Encode and decode AArch64's integer core and atomics in the browser, plus a number converter and instruction/register reference.",
+    "description": "Decode an AArch64 (ARM64) machine word into the instruction it means, or build one field by field in the browser. Full A64 reference: 244 instruction forms, 28 word layouts, registers and condition codes.",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -43,7 +43,7 @@
   <header>
     <div>
       <h1>AArch64 Toolbox</h1>
-      <p class="sub">An AArch64 instruction encoder and decoder for the integer core and atomics — branches, data processing, loads/stores and LSE atomics — plus a number converter and instruction/register reference, all in the browser.</p>
+      <p class="sub">An AArch64 (ARM64) instruction encoder and decoder for the integer core and atomics — branches, data processing, loads/stores and LSE atomics — plus a number converter and instruction/register reference, all in the browser.</p>
     </div>
     <div class="links">
       <a class="repo" href="https://romainmichau.github.io/riscv-toolbox/">
@@ -59,6 +59,9 @@
       </a>
     </div>
   </header>
+  <nav class="reference-links" aria-label="Reference">
+    <a href="reference/">Instruction reference</a>
+  </nav>
   <main id="tools"></main>
   <script type="module" src="app.js"></script>
 </body>
