@@ -1,11 +1,23 @@
 # AArch64 Toolbox
 
-Browser helpers for AArch64 (A64): a number converter, and a reasonable core
-of the instruction set as reference, encoder and decoder — data processing
-(immediate: `ADD`/`SUB`/`AND`/`ORR`/`EOR`/`MOVZ`/`MOVN`/`MOVK`), data
-processing (register: `ADD`/`SUB`/`AND`/`ORR`/`EOR` shifted-register forms),
-branches (`B`/`BL`/`B.cond`/`CBZ`/`CBNZ`), and loads/stores (`LDR`/`STR`
-immediate offset, at the byte/halfword/word/doubleword sizes).
+Browser helpers for AArch64 (A64): a number converter, and the integer core
+and atomics a modern CPU needs for general-purpose, non-numeric code, as
+reference, encoder and decoder — 28 instruction classes, 244 named forms.
+Data processing (immediate and register): `ADD`/`SUB`/`AND`/`ORR`/`EOR` and
+their `S`-setting/`BIC`/`ORN`/`EON` siblings, `MOVZ`/`MOVN`/`MOVK`, bitfield
+move and its aliases (`SXTB`/`SXTH`/`SXTW`, `LSL`/`LSR`/`ASR`,
+`BFI`/`BFXIL`, `SBFIZ`/`SBFX`/`UBFIZ`/`UBFX`), `EXTR`/`ROR`, `ADR`/`ADRP`,
+extended-register add/sub, conditional select/compare
+(`CSEL`/`CSINC`/`CSINV`/`CSNEG` and `CSET`/`CINC`/.../`CCMP`/`CCMN`),
+`SDIV`/`UDIV`, register shifts, `RBIT`/`REV`/`CLZ`/`CLS`, and
+`MADD`/`MSUB`/`MUL`/the widening and high multiplies. Branches: `B`/`BL`/
+`B.cond`/`CBZ`/`CBNZ`/`TBZ`/`TBNZ`/`BR`/`BLR`/`RET`. Loads/stores: unsigned
+and unscaled immediate offset, pre/post-indexed, register offset, pairs,
+exclusive/ordered access, `CAS`, and PC-relative literal loads, at every
+size including the signed loads. Barriers, `NOP`-family hints, `SVC`/`BRK`/
+`HLT`, and the LSE atomics (`LDADD`/`LDCLR`/`LDEOR`/`LDSET`/.../`SWP`).
+Floating point, SIMD/NEON, SVE, and system-register access (`MRS`/`MSR`)
+are out of scope.
 
 **→ [romainmichau.github.io/aarch64-toolbox](https://romainmichau.github.io/aarch64-toolbox/)**
 
