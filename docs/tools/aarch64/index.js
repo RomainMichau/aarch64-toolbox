@@ -114,3 +114,150 @@ export function wordFields(pattern) {
 export function find(cls, fields) {
   return CLASS_OWNER[cls]?.find(cls, fields) || null;
 }
+
+// --- The encoder's instruction picker -------------------------------------
+//
+// KEY_FIELDS is which of an INSTRUCTIONS row's own properties are real bit
+// fields that name the instruction — the same fields each family's find()
+// reads back. Everything else on a row (name, desc, note, destWide, opc2,
+// sfOnly) is either prose or a lookup key that is not a field of the word,
+// so applyInstruction must not try to pack it.
+const KEY_FIELDS = {
+  addsub_imm: ["opc"], logical_imm: ["opc"], movewide: ["opc"], bitfield: ["opc"],
+  extract: ["op21"], pcrel: ["op"],
+  addsub_reg: ["opc"], addsub_ext: ["opc"], logical_reg: ["opc", "n"],
+  condselect: ["op", "op2"], condcompare: ["op"], dp2src: ["opcode"],
+  dp1src: ["opcode"], dp3src: ["op31", "o0"],
+  b_bl: ["opc"], b_cond: ["opc"], cbz_cbnz: ["opc"], tbz_tbnz: ["op"],
+  br_reg: ["op"],
+  ldst_imm: ["size"], ldst_unscaled: ["size", "idx"], ldst_regoffset: ["size"],
+  ldst_pair: ["opc", "idx", "l"], ldst_excl: ["o2", "o1", "o0", "l"],
+  ldst_literal: ["opc"], atomic_ldop: ["opc", "a", "r", "size"],
+  sysmisc: ["crn", "crm", "op2"], excgen: ["opc", "ll"],
+};
+
+// MARKER_FILL is every class's own fixed marker bits, read straight off the
+// MARKERS table rather than repeated here — picking an instruction has to
+// fill those in too, or the word would not classify as its own class.
+function markerFill(cls) {
+  const out = {};
+  for (const [name, parts] of MARKERS) {
+    if (name !== cls) continue;
+    for (const { shift, width, value } of parts) {
+      // Find the layout field this marker part sits inside, and place the
+      // marker's bits at the right offset within it — a marker is described
+      // in word coordinates, a box holds a whole field.
+      for (const [id, f] of layout(cls)) {
+        if (shift < f.shift || shift + width > f.shift + f.width) continue;
+        const held = out[id] ?? 0;
+        out[id] = held | (value << (shift - f.shift));
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+const bin = (n, width) => (n >>> 0).toString(2).padStart(width, "0");
+
+// PICKER_INSTRUCTIONS is INSTRUCTIONS with a label that is unique across the
+// whole table. A bare mnemonic is not: `ldr` alone is ten rows across four
+// classes, and 60 mnemonics here name more than one encoding — so a row that
+// shares its name says which class (and, where a class holds several rows of
+// one name, which addressing mode) it is, and that label is what the picker
+// matches on. Rows whose mnemonic is already unique keep it bare, so typing
+// `movz` still just works.
+const NAME_COUNTS = INSTRUCTIONS.reduce((m, i) => m.set(i.name, (m.get(i.name) || 0) + 1), new Map());
+
+const IDX_NAMES = { 0: "unscaled", 1: "post-indexed", 3: "pre-indexed" };
+const PAIR_IDX_NAMES = { 1: "post-indexed", 2: "offset", 3: "pre-indexed" };
+const SIZE_NAMES = { 0: "byte", 1: "halfword", 2: "word", 3: "doubleword" };
+
+// qualify is the readable half: a mnemonic that names one encoding is left
+// bare, and one that does not says which class — and, for the load/store
+// families where a class still holds several rows of one name, which
+// addressing mode and access width.
+function qualify(inst) {
+  if (NAME_COUNTS.get(inst.name) === 1) return inst.name;
+  const parts = [CLASSES[inst.class].name];
+  if (inst.class === "ldst_unscaled") parts.push(IDX_NAMES[inst.idx]);
+  if (inst.class === "ldst_pair") parts.push(PAIR_IDX_NAMES[inst.idx]);
+  if (inst.destWide !== undefined) parts.push(inst.destWide ? "64 bit" : "32 bit");
+  else if (inst.size !== undefined) parts.push(SIZE_NAMES[inst.size]);
+  return `${inst.name} — ${parts.filter(Boolean).join(", ")}`;
+}
+
+// A label the picker cannot tell apart is a row the picker cannot reach, so
+// uniqueness is enforced rather than hoped for: anything still sharing a
+// label after qualify() gets the fields that actually differ across the rows
+// sharing it appended, whatever those fields happen to be. That holds for
+// tables this file has not seen yet, which is the point — the old picker lost
+// 111 of these 244 rows precisely because nothing checked.
+function disambiguate(rows) {
+  if (rows.length === 1) return;
+  const keys = new Set(rows.flatMap((r) => Object.keys(r.inst)));
+  const differing = [...keys].filter((k) => {
+    if (typeof rows[0].inst[k] === "string") return false; // name/desc/note: prose, not a field
+    return new Set(rows.map((r) => r.inst[k])).size > 1;
+  });
+  for (const row of rows) {
+    const tail = differing.map((k) => `${k}=${row.inst[k]}`).join(" ");
+    if (tail) row.label += ` · ${tail}`;
+  }
+}
+
+export const PICKER_INSTRUCTIONS = (() => {
+  const rows = INSTRUCTIONS.map((inst) => ({ inst, label: qualify(inst) }));
+  const groups = new Map();
+  for (const row of rows) {
+    const list = groups.get(row.label) || [];
+    list.push(row);
+    groups.set(row.label, list);
+  }
+  for (const list of groups.values()) disambiguate(list);
+  return rows.map(({ inst, label }) => ({ ...inst, pickerLabel: label }));
+})();
+
+// OPERAND_DEFAULTS are the few fields that are not marker bits and not part
+// of what names a row, but that still have to hold something legal before the
+// word decodes as anything at all — the reserved values each family's find()
+// rejects. Picking an instruction should always leave a decodable skeleton
+// with only its real operands still to fill in, so these come pre-set to the
+// most ordinary choice and stay editable like any other box.
+const OPERAND_DEFAULTS = {
+  br_reg: { op2: 0b11111, op3: 0, op4: 0 },   // every other combination is reserved
+  sysmisc: { rt: 0b11111 },                    // fixed for every hint and barrier
+  ldst_excl: { size: 0b11 },                   // byte/halfword forms are out of scope
+  ldst_regoffset: { option: 0b011 },           // LSL — the plain [Xn, Xm] addressing
+};
+
+// applyInstruction writes an instruction's own bits into the encoder's boxes:
+// the toolbox's synthetic class selector first (which is what makes the row
+// change shape into that class's layout), then the class's fixed marker bits,
+// then the fields that name this row. Operand fields are deliberately left
+// alone — that is what the caret is sent to next.
+export function applyInstruction(inst, values) {
+  const cls = inst.class;
+  values.class = bin(CLASS_KEYS.indexOf(cls), CLASS_SELECTOR_WIDTH);
+
+  const widths = Object.fromEntries(layout(cls).map(([id, f]) => [id, f.width]));
+  const write = (id, value) => {
+    if (widths[id] === undefined) return;
+    values[id] = bin(value, widths[id]);
+  };
+
+  for (const [id, value] of Object.entries(markerFill(cls))) write(id, value);
+  for (const [id, value] of Object.entries(OPERAND_DEFAULTS[cls] || {})) write(id, value);
+  for (const id of KEY_FIELDS[cls] || []) {
+    if (inst[id] !== undefined) write(id, inst[id]);
+  }
+  // ldst_imm/regoffset/unscaled key off opc2, a 2 bit sub-field sitting at the
+  // bottom of a wider opc box that also holds the class marker; ldst_unscaled
+  // and ldst_regoffset hold it alone. sfOnly-tagged rows only exist at one
+  // register width, so sf is part of naming them.
+  if (inst.opc2 !== undefined) {
+    if (cls === "ldst_imm") write("opc", ((markerFill(cls).opc ?? 0) >> 2 << 2) | inst.opc2);
+    else write("opc", inst.opc2);
+  }
+  if (inst.sfOnly !== undefined) write("sf", inst.sfOnly);
+}

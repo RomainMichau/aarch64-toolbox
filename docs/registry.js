@@ -497,7 +497,21 @@ export const TOOLS = [
     id: "aarch64-encode",
     name: "Instruction Encoder",
     family: "AArch64",
-    description: "Pick a class in the leftmost box and the row changes shape to match. Every other box is real AArch64; the class box is this toolbox's own, since AArch64 has no single opcode field to type instead — see the Instruction Doc.",
+    description: "Type an instruction to fill the class and opcode boxes in, then the operands — or pick a class in the leftmost box and fill the whole row by hand. Every other box is real AArch64; the class box is this toolbox's own, since AArch64 has no single opcode field to type instead — see the Instruction Doc.",
+    // The picker matches on pickerLabel, not on the mnemonic: 60 mnemonics
+    // here name more than one encoding (`ldr` alone is ten rows across four
+    // classes), so a bare-name lookup would silently reach 133 of the 244.
+    instructions: a.PICKER_INSTRUCTIONS,
+    applyInstruction: a.applyInstruction,
+    instructionHint: "movz, ldp, cbz, ldaddal…",
+    // The other half of the decoder's own hand-off: a word built here can go
+    // straight back to be read field by field.
+    sendTo: "aarch64-decode",
+    sendLabel: "Read in decoder →",
+    extractSendable: (res) => {
+      const bits = res.fields?.find((f) => f.label === "Bits")?.value?.replace(/ /g, "");
+      return bits && /^[01]{32}$/.test(bits) ? { word: bits, read: "bits" } : null;
+    },
     inputs: classInputs(a.CLASS_KEYS[0]),
     variants: a.CLASS_KEYS.map((cls, i) => ({
       when: { input: "class", equals: CLASS_BITS[i] },

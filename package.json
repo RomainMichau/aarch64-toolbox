@@ -10,6 +10,6 @@
     "postinstall": "node scripts/vendor.mjs"
   },
   "devDependencies": {
-    "isa-toolkit": "git+https://github.com/RomainMichau/isa-toolkit.git#v1.4.0"
+    "isa-toolkit": "git+https://github.com/RomainMichau/isa-toolkit.git#v1.5.1"
   }
 }

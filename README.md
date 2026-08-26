@@ -27,6 +27,11 @@ class selector, that only exists in the UI and is never packed into the
 32-bit word. Pick a class and the row of boxes changes into the format it
 asks for.
 
+Type an instruction name into the encoder and the class and opcode boxes fill
+themselves in, leaving the operands to type; the reference card has a filter
+box over all 244 forms; and every card puts what it is showing in the address
+bar, so a decoded word is a link you can send someone.
+
 Static site — no backend, no build. It is `docs/`, served as it sits.
 
 Same shape as [RISC-V Toolbox](https://github.com/romainmichau/riscv_toolbox)

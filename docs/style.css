@@ -321,8 +321,15 @@ main {
 .error { margin: .9rem 0 0; color: var(--error); font-size: .85rem; }
 .hint { margin: .7rem 0 0; color: var(--muted); font-size: .72rem; }
 
-.send-to-encoder {
+.tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
   margin-top: .9rem;
+}
+.tool-actions:empty { margin-top: 0; }
+
+.send-to-encoder {
   padding: .45rem .8rem;
   background: transparent;
   border: 1px solid var(--accent);
@@ -333,6 +340,49 @@ main {
   cursor: pointer;
 }
 .send-to-encoder:hover { background: var(--accent); color: var(--bg); }
+
+/* Copy link: the same shape as the hand-off button, quieter, since it is
+   offered on every card that computes something rather than on the one that
+   has somewhere to send its answer. */
+.copy-link {
+  padding: .45rem .8rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: .45rem;
+  color: var(--muted);
+  font: inherit;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.copy-link:hover { border-color: var(--accent); color: var(--accent); }
+.copy-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Searching a reference card. Its own row above the sections, so it stays put
+   while what is under it is filtered away. */
+.doc-search {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: .9rem;
+}
+.doc-search input {
+  flex: 1;
+  min-width: 0;
+  max-width: 22rem;
+}
+.doc-search input::-webkit-search-cancel-button { filter: grayscale(1); cursor: pointer; }
+.doc-search-count {
+  color: var(--muted);
+  font-size: .75rem;
+  white-space: nowrap;
+}
+.doc-search-empty { font-style: normal; }
+.doc mark {
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: .15rem;
+  padding: 0 .1em;
+}
 
 /* Reference tables with columns of their own. The card they come from is
    mostly tables, and a two column list cannot hold one. */

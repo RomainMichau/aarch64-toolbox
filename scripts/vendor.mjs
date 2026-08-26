@@ -13,6 +13,7 @@ const docs = join(root, "docs");
 
 const FILES = [
   "lib/bus.js",
+  "lib/urlstate.js",
   "lib/bootstrap.js",
   "lib/hooks.mjs",
   "lib/html.js",
