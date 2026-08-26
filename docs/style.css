@@ -1,0 +1,360 @@
+:root {
+  --bg: #14161c;
+  --card: #1c2029;
+  --border: #2c313d;
+  --text: #e6e8ee;
+  --muted: #8d95a8;
+  --accent: #6ee7a8;
+  --error: #ff8686;
+  /* alternating byte colours, kept far apart in hue and both bright */
+  --byte-a: #ffffff;
+  --byte-b: #ffb340;
+  /* instruction field colours */
+  --c-orange: #ffa94d;
+  --c-red: #ff6b6b;
+  --c-yellow: #ffe066;
+  --c-green: #69db7c;
+  --c-blue: #74c0fc;
+  --c-purple: #d0a2ff;
+  --c-muted: #5c6474;
+  /* tracking inside instruction segments; the box width is derived from it */
+  --seg-track: .14em;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 2rem 1.5rem 4rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+}
+
+header {
+  max-width: 60rem;
+  margin: 0 auto 2rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+h1 { margin: 0; font-size: 1.6rem; letter-spacing: .02em; }
+.sub { margin: .35rem 0 0; color: var(--muted); font-size: .9rem; }
+
+.links {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+/* Where the toolbox comes from, and its sibling toolbox. Quiet enough to
+   stay out of the way. */
+.repo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .35rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: .85rem;
+  text-decoration: none;
+  transition: color .15s, border-color .15s;
+}
+.repo:hover, .repo:focus-visible { color: var(--accent); border-color: var(--accent); }
+.repo svg { width: 1rem; height: 1rem; fill: currentColor; }
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  align-items: start;
+}
+
+.family {
+  grid-column: 1 / -1;
+  margin: .75rem 0 -.4rem;
+  padding-bottom: .45rem;
+  border-bottom: 1px solid var(--border);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.family:first-child { margin-top: 0; }
+
+.tool {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+}
+/* tools with a whole instruction word to show get a row to themselves */
+.tool.wide { grid-column: 1 / -1; }
+/* a folded card is only its title, so it does not need the bottom padding */
+.tool.folded { padding-bottom: 1.1rem; }
+
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tool-title { font-size: 1.05rem; font-weight: 600; }
+.chevron {
+  color: var(--muted);
+  font-size: .8rem;
+  transition: transform .12s ease;
+}
+.tool-head[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+
+.tool .desc { margin: .5rem 0 .9rem; color: var(--muted); font-size: .82rem; line-height: 1.4; }
+
+/* The input and the colouring layer must share every metric to stay aligned. */
+.tool input, .bits-layer {
+  width: 100%;
+  padding: .6rem .7rem;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 1rem;
+  letter-spacing: .06em;
+  line-height: 1.4;
+  border: 1px solid transparent;
+  border-radius: .45rem;
+}
+
+.tool input {
+  color: var(--text);
+  background: #12141a;
+  border-color: var(--border);
+}
+.tool input:focus { outline: none; border-color: var(--accent); }
+/* explicit, otherwise the transparent text colour hides it too */
+.tool input::placeholder { color: var(--muted); }
+
+/* Bit inputs: the text is drawn by the layer above, byte by byte. */
+.bitfield { position: relative; }
+.bitfield input { color: transparent; caret-color: var(--accent); }
+.bitfield input::selection { background: #6ee7a83d; }
+
+.bits-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  white-space: pre;
+  color: var(--text);
+}
+.byte-even { color: var(--byte-a); }
+.byte-odd { color: var(--byte-b); }
+
+/* Reference cards, and the folds inside them. */
+.doc-group + .doc-group { border-top: 1px solid var(--border); }
+.doc-group-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  width: 100%;
+  padding: .7rem 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-group-title {
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.doc-group-head[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+.doc-group-body { padding: 0 0 1rem 1.15rem; }
+.doc-group-body > .desc { margin-top: 0; }
+
+.doc-title {
+  margin: 1rem 0 .4rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.doc-title:first-child { margin-top: 0; }
+
+.doc-layout {
+  margin: 0;
+  overflow-x: auto;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 1.15rem;
+  letter-spacing: .18em;
+  white-space: pre;
+}
+
+.doc-legend, .doc-table {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .3rem .9rem;
+  margin: 0;
+  font-size: .85rem;
+}
+.doc-key {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-weight: 600;
+  text-align: center;
+}
+.doc-value { margin: 0; color: var(--text); }
+/* long lists flow over as many columns as fit, width set from the content */
+.doc-compact { column-gap: 1.6rem; font-size: .85rem; }
+.doc-entry { margin: 0 0 .35rem; break-inside: avoid; }
+.doc-entry .doc-key { display: inline-block; width: 1.6rem; margin-right: .5rem; text-align: right; }
+.doc-entry .doc-value { display: inline; }
+.doc-note { margin: 1rem 0 0; color: var(--muted); font-size: .78rem; font-style: italic; }
+
+/* A text box with its choices underneath. */
+.form { display: grid; gap: .6rem; }
+.choice { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.choice-label { margin-right: .25rem; color: var(--muted); font-size: .75rem; }
+.choice-option {
+  padding: .25rem .6rem;
+  background: #12141a;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.choice-option:hover { color: var(--text); }
+.choice-option[aria-checked="true"] {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.choice-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* The instruction picker: a type-ahead sitting above the segment row. */
+.inst-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .3rem;
+  margin-bottom: .6rem;
+  max-width: 16rem;
+}
+.inst-picker input { width: 100%; }
+
+/* Instruction segments: one box per field, all on one line. */
+.segments {
+  display: flex;
+  /* an instruction is one line: scroll it rather than wrap it */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: flex-start;
+  gap: .25rem;
+  padding-bottom: .2rem;
+}
+.seg { display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+.byte-gap { width: .7rem; }
+
+.tool .seg input {
+  padding: .55rem .5rem;
+  font-size: 1.05rem;
+  text-align: center;
+  letter-spacing: var(--seg-track);
+  color: var(--seg);
+  border-color: var(--seg);
+  caret-color: var(--seg);
+}
+.tool .seg input:focus { outline: none; box-shadow: 0 0 0 1px var(--seg); }
+.seg-label {
+  font-size: .6rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--seg);
+}
+.seg-fixed input { opacity: .45; cursor: default; }
+.seg-fixed .seg-label { opacity: .45; }
+
+.results { margin: .9rem 0 0; display: grid; gap: .4rem; }
+.row { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.row .label { color: var(--muted); font-size: .78rem; }
+.row .value {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: .95rem;
+  /* wrap at spaces when there are any, and only split a word as a last
+     resort — a spelled out instruction is prose, not a bit string */
+  word-break: normal;
+  overflow-wrap: anywhere;
+  text-align: right;
+  cursor: pointer;
+}
+.row .value:hover { color: var(--accent); }
+.row.copied .value { color: var(--accent); }
+/* a bit value keeps the byte cycle, but still answers hover and copy. It wraps
+   only where paintBytes put a break, which is between two bytes. */
+.value.bits-value { letter-spacing: .06em; word-break: normal; overflow-wrap: normal; }
+.row .value:hover .byte-even, .row .value:hover .byte-odd,
+.row.copied .value .byte-even, .row.copied .value .byte-odd { color: var(--accent); }
+.row.copied .value::after {
+  content: " copied";
+  font-size: .7rem;
+  letter-spacing: .08em;
+  color: var(--accent);
+}
+
+.error { margin: .9rem 0 0; color: var(--error); font-size: .85rem; }
+.hint { margin: .7rem 0 0; color: var(--muted); font-size: .72rem; }
+
+.send-to-encoder {
+  margin-top: .9rem;
+  padding: .45rem .8rem;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: .45rem;
+  color: var(--accent);
+  font: inherit;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.send-to-encoder:hover { background: var(--accent); color: var(--bg); }
+
+/* Reference tables with columns of their own. The card they come from is
+   mostly tables, and a two column list cannot hold one. */
+.doc-grid-scroll { overflow-x: auto; }
+.doc-grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: .8rem;
+  white-space: nowrap;
+}
+.doc-grid th {
+  padding: .3rem .8rem .35rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: .66rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.doc-grid td { padding: .22rem .8rem .22rem 0; vertical-align: baseline; }
+.doc-grid tbody tr:hover td { background: #ffffff08; }
+.doc-grid .mono { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; }
+/* the last column is prose: let it wrap rather than push the table wider */
+.doc-grid td:last-child, .doc-grid th:last-child { white-space: normal; padding-right: 0; }

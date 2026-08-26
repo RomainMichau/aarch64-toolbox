@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AArch64 Toolbox — Instruction Encoder &amp; Decoder</title>
+  <meta name="description" content="Free browser tool to encode and decode AArch64 instructions bit by bit, plus a number converter and a full instruction and register reference card.">
+  <link rel="canonical" href="https://romainmichau.github.io/aarch64-toolbox/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="AArch64 Toolbox — Instruction Encoder & Decoder">
+  <meta property="og:description" content="Encode and decode AArch64 instructions in the browser, plus a number converter and instruction/register reference.">
+  <meta property="og:url" content="https://romainmichau.github.io/aarch64-toolbox/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="AArch64 Toolbox — Instruction Encoder & Decoder">
+  <meta name="twitter:description" content="Encode and decode AArch64 instructions in the browser, plus a number converter and instruction/register reference.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AArch64 Toolbox",
+    "url": "https://romainmichau.github.io/aarch64-toolbox/",
+    "description": "Encode and decode AArch64 instructions in the browser, plus a number converter and instruction/register reference.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <!-- Where the vendored modules live, so they and our own code can both
+       import "preact" by name instead of by path. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "preact": "./lib/preact.mjs",
+        "preact/hooks": "./lib/hooks.mjs",
+        "htm": "./lib/htm.mjs"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AArch64 Toolbox</h1>
+      <p class="sub">An AArch64 instruction encoder and decoder for a core subset — branches, data processing and loads/stores — plus a number converter and instruction/register reference, all in the browser.</p>
+    </div>
+    <div class="links">
+      <a class="repo" href="https://romainmichau.github.io/riscv-toolbox/">
+        RISC-V Toolbox →
+      </a>
+      <a class="repo" href="https://romainmichau.github.io/turing_complete_toolbox/">
+        Turing Complete Toolbox →
+      </a>
+      <a class="repo" href="https://github.com/RomainMichau/aarch64-toolbox"
+         target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        Source
+      </a>
+    </div>
+  </header>
+  <main id="tools"></main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
