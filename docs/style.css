@@ -409,32 +409,3 @@ main {
 /* the last column is prose: let it wrap rather than push the table wider */
 .doc-grid td:last-child, .doc-grid th:last-child { white-space: normal; padding-right: 0; }
 
-/* The way through to the written-out reference. Sits outside the app's own
-   <main>, so it is there before any JavaScript runs — and stays there. */
-.reference-links {
-  max-width: var(--w, 60rem);
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-.reference-links a {
-  display: inline-block;
-  padding: .4rem .75rem;
-  border: 1px solid var(--border);
-  border-radius: .45rem;
-  color: var(--muted);
-  font-size: .8rem;
-  text-decoration: none;
-}
-.reference-links a:hover, .reference-links a:focus-visible { border-color: var(--accent); color: var(--accent); }
-
-/* Reference pages: the same look as a doc card, laid out as a page. */
-main.reference { max-width: 60rem; margin: 0 auto; padding: 1rem 1rem 4rem; }
-main.reference h2 { margin: 2rem 0 .6rem; font-size: 1.05rem; }
-main.reference h3 { margin: 1.4rem 0 .5rem; font-size: .92rem; color: var(--muted); }
-main.reference p { margin: .6rem 0; font-size: .85rem; line-height: 1.55; }
-main.reference code { color: var(--accent); }
-.reference-more { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1.2rem; }
-.reference-more ul { list-style: none; margin: 0; padding: 0; columns: 14rem; }
-.reference-more li { margin: .2rem 0; font-size: .8rem; }
-.reference-more a { color: var(--muted); text-decoration: none; }
-.reference-more a:hover { color: var(--accent); }

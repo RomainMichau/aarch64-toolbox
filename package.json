@@ -7,10 +7,9 @@
     "test": "node --test test/",
     "serve": "python3 -m http.server 8080 --directory docs",
     "vendor": "node scripts/vendor.mjs",
-    "postinstall": "node scripts/vendor.mjs && node scripts/reference.mjs",
-    "reference": "node scripts/reference.mjs"
+    "postinstall": "node scripts/vendor.mjs"
   },
   "devDependencies": {
-    "isa-toolkit": "git+https://github.com/RomainMichau/isa-toolkit.git#v1.6.0"
+    "isa-toolkit": "git+https://github.com/RomainMichau/isa-toolkit.git#v1.7.0"
   }
 }

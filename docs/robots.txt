@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://romainmichau.github.io/aarch64-toolbox/sitemap.xml
