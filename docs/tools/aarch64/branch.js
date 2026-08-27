@@ -44,18 +44,20 @@ export const CLASSES = {
       ["rt", { shift: 0, width: 5 }],
     ],
   },
-  // BR, BLR, RET — verified against `br x0`=0xD61F0000 and `ret`(x30
-  // implied)=0xD65F03C0, both checked field by field. BLR's own op value
-  // (0b10, by elimination — the only one of 00/01/10 not claimed by BR or
-  // RET) was not checked against an independently-known word the way the
-  // other two were.
+  // BR, BLR, RET — verified against `br x0`=0xD61F0000, `blr x0`=0xD63F0000
+  // and `ret`(x30 implied)=0xD65F03C0, each checked field by field.
+  //
+  // The opcode here is one 4 bit field at 24:21, not three. Splitting it
+  // into z(24)/op(23:22)/a(21) and calling bit 21 a pointer-authentication
+  // bit cost BLR twice over: bit 21 is the opcode's low bit and it is
+  // exactly what tells BLR from BR, so the real 0xD63F0000 did not decode,
+  // and the value picked for BLR by elimination over the wrong field
+  // (0b10, i.e. opc=0100) packed ERET's slot instead.
   br_reg: {
     name: "BR / BLR / RET",
     layout: [
       ["fixed1", { shift: 25, width: 7 }],
-      ["z", { shift: 24, width: 1 }],
-      ["op", { shift: 22, width: 2 }],
-      ["a", { shift: 21, width: 1 }],
+      ["op", { shift: 21, width: 4 }],
       ["op2", { shift: 16, width: 5 }],
       ["op3", { shift: 10, width: 6 }],
       ["rn", { shift: 5, width: 5 }],
@@ -69,15 +71,17 @@ export const MARKERS = [
   ["b_cond", [{ shift: 24, width: 8, value: 0b01010100 }]],
   ["cbz_cbnz", [{ shift: 25, width: 6, value: 0b011010 }]],
   ["tbz_tbnz", [{ shift: 25, width: 6, value: 0b011011 }]],
-  // fixed1 (28:22 minus op, which is real per-instruction data) plus z=0 and
-  // a=0 (pointer authentication variants, out of scope) are the only truly
-  // constant bits — op2/op3/op4 are constant too, but per-instruction, not
-  // per-class, so find() checks them instead (the same split classify() vs
-  // find() draws for addsub_reg's shiftop and logical_reg's N).
+  // 31:25 is the only bit run that is constant for the whole class — op is
+  // real per-instruction data, and op2/op3/op4 are constant per instruction
+  // rather than per class, so find() checks those instead (the same split
+  // classify() vs find() draws for addsub_reg's shiftop and logical_reg's
+  // N). Pinning op's top bit to 0 as well is what keeps the class to the
+  // three plain forms: opc=01xx is ERET/DRPS and opc=1xxx the pointer
+  // authentication variants, all out of scope, and now told so by find()
+  // rather than silently classified as something else.
   ["br_reg", [
     { shift: 25, width: 7, value: 0b1101011 },
     { shift: 24, width: 1, value: 0 },
-    { shift: 21, width: 1, value: 0 },
   ]],
 ];
 
@@ -89,9 +93,9 @@ export const INSTRUCTIONS = [
   { name: "cbnz", class: "cbz_cbnz", opc: 0b0110101, desc: "if (Rt != 0) PC = PC + offset" },
   { name: "tbz", class: "tbz_tbnz", op: 0, desc: "if (Rt<bit> == 0) PC = PC + offset" },
   { name: "tbnz", class: "tbz_tbnz", op: 1, desc: "if (Rt<bit> != 0) PC = PC + offset" },
-  { name: "br", class: "br_reg", op: 0b00, desc: "PC = Rn" },
-  { name: "blr", class: "br_reg", op: 0b10, desc: "X30 = PC + 4; PC = Rn" },
-  { name: "ret", class: "br_reg", op: 0b01, desc: "PC = Rn" },
+  { name: "br", class: "br_reg", op: 0b0000, desc: "PC = Rn" },
+  { name: "blr", class: "br_reg", op: 0b0001, desc: "X30 = PC + 4; PC = Rn" },
+  { name: "ret", class: "br_reg", op: 0b0010, desc: "PC = Rn" },
 ];
 
 export function find(cls, fields) {

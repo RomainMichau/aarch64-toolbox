@@ -3,5 +3,6 @@
 
 import { mount } from "./lib/bootstrap.js";
 import { TOOLS } from "./registry.js";
+import { run } from "./tools/index.js";
 
-mount(TOOLS);
+mount(TOOLS, run);

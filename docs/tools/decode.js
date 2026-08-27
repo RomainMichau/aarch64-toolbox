@@ -23,6 +23,8 @@
 import { cleanBits, patternValue as value, variableName, wordPattern } from "./bits.js";
 import * as a from "./aarch64.js";
 import { bitfieldAlias } from "./aarch64/dataproc-imm.js";
+import { noHash, extrWindow } from "./aarch64/effects.js";
+import { barrierOperand } from "./aarch64/system.js";
 
 const unknown = (slice) => `variable ${variableName(slice)}`;
 
@@ -36,6 +38,13 @@ function register(slice, sf, sp) {
 
 const SHIFT_NAMES_ADDSUB = ["lsl", "lsr", "asr", "reserved"];
 const SHIFT_NAMES_LOGICAL = ["lsl", "lsr", "asr", "ror"];
+
+// shiftName reads a shift-type field, or says it could not — printing `lsl`
+// for a field still holding letters would be the same guess b_cond used to
+// make about `cond`. The slice is the type's own two bits: addsub_reg's
+// three bit `shiftop` carries a marker bit under them.
+const shiftName = (names, slice) =>
+  (/^[01]{2}$/.test(slice || "") ? names[parseInt(slice, 2)] : "<shift>");
 const EXTEND_NAMES = ["uxtb", "uxth", "uxtw", "uxtx", "sxtb", "sxth", "sxtw", "sxtx"];
 const invertibleCond = (cond) => cond !== 0b1110 && cond !== 0b1111;
 
@@ -70,7 +79,10 @@ export function decodeAarch64(input) {
   const text = cleanBits(input.word || "");
   if (text === "") return [];
 
-  const pattern = wordPattern(text, input.read, a.WORD_BITS);
+  // 0xD10043FF is `sub sp, sp, #16` — the first instruction of most
+  // AArch64 function prologues, and a better thing to be offered here than
+  // the RV32 word the shared helper used to suggest.
+  const pattern = wordPattern(text, input.read, a.WORD_BITS, "D10043FF");
   const fields = [{ label: "Bits", value: pattern, format: "bits" }];
 
   const { cls, unknown: blocked } = a.classifyStatus(pattern);
@@ -123,6 +135,7 @@ export function decodeAarch64(input) {
     case "addsub_imm": {
       const sf = f.sf === 1;
       const sub = inst.name.startsWith("sub");
+      const flags = inst.name.endsWith("s");
       const rn = register(at.rn, sf, true);
       const rd = register(at.rd, sf, true);
       push("rn", rn);
@@ -130,13 +143,14 @@ export function decodeAarch64(input) {
       const shOk = readable("sh") && readable("imm12");
       const value12 = shOk ? f.imm12 << (f.sh ? 12 : 0) : null;
       const immOp = shOk ? `#${value12}` : "needs sh and imm12 to be known";
-      if (readable("rd") && f.rd === 31) {
+      // CMP/CMN need the S bit as well as Rd=11111 — see encode.js.
+      if (readable("rd") && f.rd === 31 && flags) {
         mnemonic = sub ? "cmp" : "cmn";
         operands = `${rn}, ${immOp}`;
         effect = `flags = flagsOf(${rn} ${sub ? "-" : "+"} ${immOp})`;
       } else {
         operands = `${rd}, ${rn}, ${immOp}`;
-        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${immOp}${inst.name.endsWith("s") ? ", flags set" : ""}`;
+        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${immOp}${flags ? ", flags set" : ""}`;
       }
       if (shOk && f.sh) extra.push({ label: "Immediate", value: `imm12 (${f.imm12}) << 12 = ${value12} — sh is set` });
       break;
@@ -234,7 +248,7 @@ export function decodeAarch64(input) {
         effect = `${rd} = ${rn} rotated right by ${lsbText}`;
       } else {
         operands = `${rd}, ${rn}, ${rm}, ${lsbText}`;
-        effect = `${rd} = (${rn}:${rm}) bits starting at ${lsbText}`;
+        effect = extrWindow(rd, rn, rm, readable("lsb") ? f.lsb : null, lsbText, sf ? 64 : 32);
       }
       break;
     }
@@ -255,23 +269,30 @@ export function decodeAarch64(input) {
     case "addsub_reg": {
       const sf = f.sf === 1;
       const sub = inst.name.startsWith("sub");
-      const rn = register(at.rn, sf, true);
+      const flags = inst.name.endsWith("s");
+      // No SP in the shifted-register form, in any of the three — see
+      // encode.js's own note on the same case.
+      const rn = register(at.rn, sf, false);
       const rm = register(at.rm, sf, false);
-      const rd = register(at.rd, sf, true);
+      const rd = register(at.rd, sf, false);
       push("rn", rn);
       push("rm", rm);
       push("rd", rd);
       const amtOk = readable("imm6");
-      const shiftType = SHIFT_NAMES_ADDSUB[f.shiftop >> 1];
+      const shiftType = shiftName(SHIFT_NAMES_ADDSUB, at.shiftop?.slice(0, 2));
       const shiftSuffix = amtOk ? (f.imm6 ? `, ${shiftType} #${f.imm6}` : "") : `, ${shiftType} #<imm6>`;
       const shiftedRm = amtOk ? (f.imm6 ? `${shiftType}(${rm}, ${f.imm6})` : rm) : `${shiftType}(${rm}, <imm6>)`;
-      if (readable("rd") && f.rd === 31) {
+      if (readable("rd") && f.rd === 31 && flags) {
         mnemonic = sub ? "cmp" : "cmn";
         operands = `${rn}, ${rm}${shiftSuffix}`;
         effect = `flags = flagsOf(${rn} ${sub ? "-" : "+"} ${shiftedRm})`;
+      } else if (sub && readable("rn") && f.rn === 31) {
+        mnemonic = flags ? "negs" : "neg";
+        operands = `${rd}, ${rm}${shiftSuffix}`;
+        effect = `${rd} = -${shiftedRm}${flags ? ", flags set" : ""}`;
       } else {
         operands = `${rd}, ${rn}, ${rm}${shiftSuffix}`;
-        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${shiftedRm}${inst.name.endsWith("s") ? ", flags set" : ""}`;
+        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${shiftedRm}${flags ? ", flags set" : ""}`;
       }
       break;
     }
@@ -289,7 +310,7 @@ export function decodeAarch64(input) {
       const amtOk = readable("imm3");
       const shiftSuffix = amtOk ? (f.imm3 ? `, ${extendName} #${f.imm3}` : `, ${extendName}`) : `, ${extendName} #<imm3>`;
       const extendedRm = amtOk ? `${extendName}(${rm})${f.imm3 ? ` << ${f.imm3}` : ""}` : `${extendName}(${rm}) << <imm3>`;
-      if (readable("rd") && f.rd === 31) {
+      if (readable("rd") && f.rd === 31 && inst.name.endsWith("s")) {
         mnemonic = sub ? "cmp" : "cmn";
         operands = `${rn}, ${rm}${shiftSuffix}`;
         effect = `flags = flagsOf(${rn} ${sub ? "-" : "+"} ${extendedRm})`;
@@ -308,7 +329,7 @@ export function decodeAarch64(input) {
       push("rm", rm);
       push("rd", rd);
       const amtOk = readable("imm6");
-      const shiftType = SHIFT_NAMES_LOGICAL[f.shift];
+      const shiftType = shiftName(SHIFT_NAMES_LOGICAL, at.shift);
       const shiftSuffix = amtOk ? (f.imm6 ? `, ${shiftType} #${f.imm6}` : "") : `, ${shiftType} #<imm6>`;
       const shiftedRm = amtOk ? (f.imm6 ? `${shiftType}(${rm}, ${f.imm6})` : rm) : `${shiftType}(${rm}, <imm6>)`;
       const notedRm = `${f.n ? "~" : ""}${shiftedRm}`;
@@ -321,7 +342,8 @@ export function decodeAarch64(input) {
         mnemonic = "mvn";
         operands = `${rd}, ${rm}${shiftSuffix}`;
         effect = `${rd} = ~${shiftedRm}`;
-      } else if ((inst.name === "ands" || inst.name === "bics") && readable("rd") && f.rd === 31) {
+      } else if (inst.name === "ands" && readable("rd") && f.rd === 31) {
+        // BICS keeps its own name — see encode.js.
         mnemonic = "tst";
         operands = `${rn}, ${rm}${shiftSuffix}`;
         effect = `flags = flagsOf(${rn} & ${notedRm})`;
@@ -348,12 +370,13 @@ export function decodeAarch64(input) {
       if (canAlias && zeroZero && inst.name !== "csneg") {
         mnemonic = inst.name === "csinc" ? "cset" : "csetm";
         operands = `${rd}, ${invertedText}`;
-        effect = `${rd} = (${invertedText}) ? ${inst.name === "cset" ? "1" : "-1"} : 0`;
+        effect = `${rd} = (${invertedText}) ? ${mnemonic === "cset" ? "1" : "-1"} : 0`;
       } else if (canAlias && same) {
         mnemonic = { csinc: "cinc", csinv: "cinv", csneg: "cneg" }[inst.name];
         operands = `${rd}, ${rn}, ${invertedText}`;
         const op = { cinc: `${rn} + 1`, cinv: `~${rn}`, cneg: `-${rn}` }[mnemonic];
-        effect = `${rd} = (${invertedText}) ? ${rn} : ${op}`;
+        // The arms swap with the condition — see encode.js.
+        effect = `${rd} = (${invertedText}) ? ${op} : ${rn}`;
       } else {
         operands = `${rd}, ${rn}, ${rm}, ${condText}`;
         const op2 = { csel: rm, csinc: `${rm} + 1`, csinv: `~${rm}`, csneg: `-${rm}` }[inst.name];
@@ -438,10 +461,15 @@ export function decodeAarch64(input) {
       break;
     }
     case "b_cond": {
-      mnemonic = `b.${a.condName(f.cond)}`;
+      // Every other class names the letter rather than guessing what it
+      // stands for. This one read `cond` straight through — and an
+      // unreadable field reads as 0, so `01010100…cccc` came back as b.eq.
+      const condOk = readable("cond");
+      mnemonic = condOk ? `b.${a.condName(f.cond)}` : "b.<cond>";
       const off = immText("imm19", (n) => `#${a.branchOffset(n, 19)}`);
       operands = off;
-      effect = `if (${a.CONDITIONS[f.cond]?.[1] ?? `cond${f.cond}`}) pc = pc + ${off}`;
+      const test = condOk ? (a.CONDITIONS[f.cond]?.[1] ?? `cond${f.cond}`) : unknown(at.cond);
+      effect = `if (${test}) pc = pc + ${off}`;
       break;
     }
     case "cbz_cbnz": {
@@ -528,7 +556,7 @@ export function decodeAarch64(input) {
       push("rn", rn);
       push("rt", rt);
       push("rt2", rt2);
-      const scale = inst.destWide ? 8 : 4;
+      const scale = inst.scale ?? (inst.destWide ? 8 : 4);
       const offOk = readable("imm7");
       const off = offOk ? a.signExtend(f.imm7, 7) * scale : null;
       const offText = offOk ? `#${off}` : "<imm7 × scale>";
@@ -536,9 +564,12 @@ export function decodeAarch64(input) {
         : f.idx === 0b001 ? `[${rn}], ${offText}`
         : `[${rn}, ${offText}]!`;
       operands = `${rt}, ${rt2}, ${addr}`;
-      const size = inst.destWide ? 8 : 4;
+      const size = scale;
       const base = offOk ? `${rn}+${off}` : `${rn}+?`;
-      const mem = inst.name === "ldp" ? `${rt}, ${rt2} = M[${base}], M[${base}+${size}]` : `M[${base}], M[${base}+${size}] = ${rt}, ${rt2}`;
+      const load = (m) => (inst.signed ? `SignExtend(${m})` : m);
+      const mem = inst.l
+        ? `${rt}, ${rt2} = ${load(`M[${base}]`)}, ${load(`M[${base}+${size}]`)}`
+        : `M[${base}], M[${base}+${size}] = ${rt}, ${rt2}`;
       effect = f.idx === 0b010 ? mem
         : f.idx === 0b001 ? `${mem}; ${rn} += ${offText}`
         : `${rn} += ${offText}; ${mem.replaceAll(base, rn)}`;
@@ -594,8 +625,9 @@ export function decodeAarch64(input) {
 
     // --- System ---------------------------------------------------------
     case "sysmisc": {
-      operands = readable("crn") && f.crn === 0b0011 ? "sy" : ""; // this toolbox only names the full-system barrier domain
-      effect = inst.desc;
+      const barrier = readable("crn") && f.crn === 0b0011;
+      operands = barrier ? barrierOperand(inst.name, f.crm) : ""; // hints take no operand
+      effect = barrier && inst.name !== "isb" ? `${inst.desc}, over the ${operands} domain` : inst.desc;
       break;
     }
     case "excgen": {
@@ -608,7 +640,7 @@ export function decodeAarch64(input) {
 
   fields.push(
     { label: "Instruction", value: operands ? `${mnemonic} ${operands}` : mnemonic },
-    { label: "Effect", value: effect + (inst.note ? ` — ${inst.note}` : "") },
+    { label: "Effect", value: noHash(effect) + (inst.note ? ` — ${inst.note}` : "") },
     ...extra,
   );
   return fields;

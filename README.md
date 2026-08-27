@@ -2,7 +2,7 @@
 
 Browser helpers for AArch64 (A64): a number converter, and the integer core
 and atomics a modern CPU needs for general-purpose, non-numeric code, as
-reference, encoder and decoder — 28 instruction classes, 244 named forms.
+reference, encoder and decoder — 28 instruction classes, 247 named forms.
 Data processing (immediate and register): `ADD`/`SUB`/`AND`/`ORR`/`EOR` and
 their `S`-setting/`BIC`/`ORN`/`EON` siblings, `MOVZ`/`MOVN`/`MOVK`, bitfield
 move and its aliases (`SXTB`/`SXTH`/`SXTW`, `LSL`/`LSR`/`ASR`,
@@ -13,8 +13,8 @@ extended-register add/sub, conditional select/compare
 `MADD`/`MSUB`/`MUL`/the widening and high multiplies. Branches: `B`/`BL`/
 `B.cond`/`CBZ`/`CBNZ`/`TBZ`/`TBNZ`/`BR`/`BLR`/`RET`. Loads/stores: unsigned
 and unscaled immediate offset, pre/post-indexed, register offset, pairs,
-exclusive/ordered access, `CAS`, and PC-relative literal loads, at every
-size including the signed loads. Barriers, `NOP`-family hints, `SVC`/`BRK`/
+exclusive/ordered access, `CAS`, `LDPSW`, and PC-relative literal
+loads, at every size including the signed loads. Barriers, `NOP`-family hints, `SVC`/`BRK`/
 `HLT`, and the LSE atomics (`LDADD`/`LDCLR`/`LDEOR`/`LDSET`/.../`SWP`).
 Floating point, SIMD/NEON, SVE, and system-register access (`MRS`/`MSR`)
 are out of scope.
@@ -29,7 +29,7 @@ asks for.
 
 Type an instruction name into the encoder and the class and opcode boxes fill
 themselves in, leaving the operands to type; the reference card has a filter
-box over all 244 forms; and every card puts what it is showing in the address
+box over all 247 forms; and every card puts what it is showing in the address
 bar, so a decoded word is a link you can send someone.
 
 Static site — no backend, no build. It is `docs/`, served as it sits.

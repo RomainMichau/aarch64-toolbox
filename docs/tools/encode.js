@@ -9,6 +9,8 @@
 import { bitsField, packWord, wordBits, hexWord } from "./bits.js";
 import * as a from "./aarch64.js";
 import { bitfieldAlias } from "./aarch64/dataproc-imm.js";
+import { noHash, extrWindow } from "./aarch64/effects.js";
+import { barrierOperand } from "./aarch64/system.js";
 
 const SHIFT_NAMES_ADDSUB = ["lsl", "lsr", "asr", "reserved"];
 const SHIFT_NAMES_LOGICAL = ["lsl", "lsr", "asr", "ror"];
@@ -56,16 +58,21 @@ export function encodeAarch64(input) {
     case "addsub_imm": {
       const sf = f.sf === 1;
       const sub = inst.name.startsWith("sub");
+      const flags = inst.name.endsWith("s");
       const value = f.imm12 << (f.sh ? 12 : 0);
       const rn = reg(f.rn, sf, true);
-      if (f.rd === 31) {
+      // CMP is SUBS with Rd=11111 and CMN is ADDS with Rd=11111 — the S bit
+      // is half the alias's condition. Without it register 31 is not the
+      // zero register at all but SP, and `sub sp, sp, #16`, the first
+      // instruction of most function prologues, is not a compare.
+      if (f.rd === 31 && flags) {
         mnemonic = sub ? "cmp" : "cmn";
         operands = `${rn}, ${imm(value)}`;
         effect = `flags = flagsOf(${rn} ${sub ? "-" : "+"} ${value})`;
       } else {
         const rd = reg(f.rd, sf, true);
         operands = `${rd}, ${rn}, ${imm(value)}`;
-        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${value}${inst.name.endsWith("s") ? ", flags set" : ""}`;
+        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${value}${flags ? ", flags set" : ""}`;
       }
       if (f.sh) extra.push({ label: "Immediate", value: `imm12 (${f.imm12}) << 12 = ${value} — sh is set` });
       break;
@@ -130,7 +137,7 @@ export function encodeAarch64(input) {
       } else {
         operands = `${rd}, ${rn}`;
       }
-      effect = `${mnemonic} ${operands}`.replace(/#/g, "");
+      effect = `${mnemonic} ${operands}`;
       extra.push({ label: "Fields", value: `N=${f.n}, immr=${f.immr}, imms=${f.imms}` });
       break;
     }
@@ -145,7 +152,7 @@ export function encodeAarch64(input) {
         effect = `${rd} = ${rn} rotated right by ${f.lsb}`;
       } else {
         operands = `${rd}, ${rn}, ${rm}, ${imm(f.lsb)}`;
-        effect = `${rd} = (${rn}:${rm}) bits [${f.lsb + (sf ? 63 : 31)}:${f.lsb}]`;
+        effect = extrWindow(rd, rn, rm, f.lsb, null, sf ? 64 : 32);
       }
       break;
     }
@@ -163,19 +170,29 @@ export function encodeAarch64(input) {
     case "addsub_reg": {
       const sf = f.sf === 1;
       const sub = inst.name.startsWith("sub");
-      const rn = reg(f.rn, sf, true);
+      const flags = inst.name.endsWith("s");
+      // SP is reachable from the immediate and extended-register forms only.
+      // The shifted-register form reads 31 as XZR/WZR in Rd, Rn and Rm
+      // alike, which is what makes NEG below spellable in the first place.
+      const rd = reg(f.rd, sf, false);
+      const rn = reg(f.rn, sf, false);
       const rm = reg(f.rm, sf, false);
       const shiftType = SHIFT_NAMES_ADDSUB[f.shiftop >> 1];
       const shiftSuffix = f.imm6 ? `, ${shiftType} #${f.imm6}` : "";
       const shiftedRm = f.imm6 ? `${shiftType}(${rm}, ${f.imm6})` : rm;
-      if (f.rd === 31) {
+      if (f.rd === 31 && flags) {
         mnemonic = sub ? "cmp" : "cmn";
         operands = `${rn}, ${rm}${shiftSuffix}`;
         effect = `flags = flagsOf(${rn} ${sub ? "-" : "+"} ${shiftedRm})`;
+      } else if (sub && f.rn === 31) {
+        // Subtracting from the zero register is how AArch64 spells negation.
+        // CMP wins the tie when Rd is 31 too, the way an assembler prefers it.
+        mnemonic = flags ? "negs" : "neg";
+        operands = `${rd}, ${rm}${shiftSuffix}`;
+        effect = `${rd} = -${shiftedRm}${flags ? ", flags set" : ""}`;
       } else {
-        const rd = reg(f.rd, sf, true);
         operands = `${rd}, ${rn}, ${rm}${shiftSuffix}`;
-        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${shiftedRm}${inst.name.endsWith("s") ? ", flags set" : ""}`;
+        effect = `${rd} = ${rn} ${sub ? "-" : "+"} ${shiftedRm}${flags ? ", flags set" : ""}`;
       }
       break;
     }
@@ -188,7 +205,7 @@ export function encodeAarch64(input) {
       const extendName = EXTEND_NAMES[f.option];
       const shiftSuffix = f.imm3 ? `, ${extendName} #${f.imm3}` : `, ${extendName}`;
       const extendedRm = `${extendName}(${rm})${f.imm3 ? ` << ${f.imm3}` : ""}`;
-      if (f.rd === 31) {
+      if (f.rd === 31 && inst.name.endsWith("s")) {
         mnemonic = sub ? "cmp" : "cmn";
         operands = `${rn}, ${rm}${shiftSuffix}`;
         effect = `flags = flagsOf(${rn} ${sub ? "-" : "+"} ${extendedRm})`;
@@ -217,7 +234,9 @@ export function encodeAarch64(input) {
         mnemonic = "mvn";
         operands = `${rd}, ${rm}${shiftSuffix}`;
         effect = `${rd} = ~${shiftedRm}`;
-      } else if ((inst.name === "ands" || inst.name === "bics") && f.rd === 31) {
+      } else if (inst.name === "ands" && f.rd === 31) {
+        // BICS has no TST alias — its negated operand has nowhere to go in
+        // one, so `bics xzr, x1, x2` keeps its own name.
         mnemonic = "tst";
         operands = `${rn}, ${rm}${shiftSuffix}`;
         effect = `flags = flagsOf(${rn} & ${notedRm})`;
@@ -239,12 +258,17 @@ export function encodeAarch64(input) {
       if (canAlias && zeroZero && inst.name !== "csneg") {
         mnemonic = inst.name === "csinc" ? "cset" : "csetm";
         operands = `${rd}, ${a.condName(invertedCond)}`;
-        effect = `${rd} = (${a.condName(invertedCond)}) ? ${inst.name === "cset" ? "1" : "-1"} : 0`;
+        // The alias name is the one to ask: `inst.name` is still csinc/csinv
+        // here, so testing it picked -1 every time.
+        effect = `${rd} = (${a.condName(invertedCond)}) ? ${mnemonic === "cset" ? "1" : "-1"} : 0`;
       } else if (canAlias && same) {
         mnemonic = { csinc: "cinc", csinv: "cinv", csneg: "cneg" }[inst.name];
         operands = `${rd}, ${rn}, ${a.condName(invertedCond)}`;
         const op = { cinc: `${rn} + 1`, cinv: `~${rn}`, cneg: `-${rn}` }[mnemonic];
-        effect = `${rd} = (${a.condName(invertedCond)}) ? ${rn} : ${op}`;
+        // CINC Rd, Rn, cond is CSINC Rd, Rn, Rn, invert(cond): the condition
+        // is inverted and the arms swap with it, so the increment happens
+        // when the *named* condition holds. CSET above already does both.
+        effect = `${rd} = (${a.condName(invertedCond)}) ? ${op} : ${rn}`;
       } else {
         operands = `${rd}, ${rn}, ${rm}, ${a.condName(f.cond)}`;
         const op2 = { csel: rm, csinc: `${rm} + 1`, csinv: `~${rm}`, csneg: `-${rm}` }[inst.name];
@@ -388,14 +412,17 @@ export function encodeAarch64(input) {
       const rt = reg(f.rt, inst.destWide, false);
       const rt2 = reg(f.rt2, inst.destWide, false);
       const rn = reg(f.rn, true, true);
-      const scale = inst.destWide ? 8 : 4;
+      const scale = inst.scale ?? (inst.destWide ? 8 : 4);
       const off = a.signExtend(f.imm7, 7) * scale;
       const addr = f.idx === 0b010 ? (off ? `[${rn}, ${imm(off)}]` : `[${rn}]`)
         : f.idx === 0b001 ? `[${rn}], ${imm(off)}`
         : `[${rn}, ${imm(off)}]!`;
       operands = `${rt}, ${rt2}, ${addr}`;
-      const size = inst.destWide ? 8 : 4;
-      const mem = inst.name === "ldp" ? `${rt}, ${rt2} = M[${rn}+${off}], M[${rn}+${off}+${size}]` : `M[${rn}+${off}], M[${rn}+${off}+${size}] = ${rt}, ${rt2}`;
+      const size = scale;
+      const load = (m) => (inst.signed ? `SignExtend(${m})` : m);
+      const mem = inst.l
+        ? `${rt}, ${rt2} = ${load(`M[${rn}+${off}]`)}, ${load(`M[${rn}+${off}+${size}]`)}`
+        : `M[${rn}+${off}], M[${rn}+${off}+${size}] = ${rt}, ${rt2}`;
       effect = f.idx === 0b010 ? mem
         : f.idx === 0b001 ? `${mem}; ${rn} += ${off}`
         : `${rn} += ${off}; ${mem.replace(new RegExp(`${rn}\\+${off}`, "g"), rn)}`;
@@ -444,8 +471,8 @@ export function encodeAarch64(input) {
 
     // --- System ---------------------------------------------------------
     case "sysmisc": {
-      operands = f.crn === 0b0011 ? "sy" : ""; // this toolbox only names the full-system barrier domain
-      effect = inst.desc;
+      operands = f.crn === 0b0011 ? barrierOperand(inst.name, f.crm) : ""; // hints take no operand
+      effect = f.crn === 0b0011 && inst.name !== "isb" ? `${inst.desc}, over the ${operands} domain` : inst.desc;
       break;
     }
     case "excgen": {
@@ -457,7 +484,7 @@ export function encodeAarch64(input) {
 
   fields.push(
     { label: "Instruction", value: operands ? `${mnemonic} ${operands}` : mnemonic },
-    { label: "Effect", value: effect + (inst.note ? ` — ${inst.note}` : "") },
+    { label: "Effect", value: noHash(effect) + (inst.note ? ` — ${inst.note}` : "") },
     ...extra,
   );
   return fields;

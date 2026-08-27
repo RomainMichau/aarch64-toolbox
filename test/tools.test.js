@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { run } from "../docs/tools/index.js";
 import * as a from "../docs/tools/aarch64.js";
 import { bitfieldAlias } from "../docs/tools/aarch64/dataproc-imm.js";
+import { extractSendableAarch64 } from "../docs/tools/decode.js";
 
 const bits = (n, width) => (n >>> 0).toString(2).padStart(width, "0");
 
@@ -36,7 +37,15 @@ const markerFill = (cls) => {
   const out = {};
   if (!entry) return out;
   for (const { shift, width, value } of entry[1]) {
-    for (const [id, spec] of a.layout(cls)) if (spec.shift === shift && spec.width === width) out[id] = value;
+    // A marker part is described in word coordinates and a box holds a whole
+    // field, so a part may sit inside a wider one — br_reg's marker pins the
+    // top bit of its 4 bit opcode. Place the bits at the right offset rather
+    // than only matching a field exactly.
+    for (const [id, spec] of a.layout(cls)) {
+      if (shift < spec.shift || shift + width > spec.shift + spec.width) continue;
+      out[id] = (out[id] ?? 0) | (value << (shift - spec.shift));
+      break;
+    }
   }
   return out;
 };
@@ -353,20 +362,34 @@ test("TBZ / TBNZ — verified: tbnz w0,#0,. packs to the well known 0x37 prefix"
   assert.equal(tbz64.Instruction, "tbz x1, #37, #16");
 });
 
-test("BR / BLR / RET — verified against br x0=0xD61F0000 and ret=0xD65F03C0", () => {
-  const br = enc("br_reg", { fixed1: 0b1101011, z: 0, op: 0, a: 0, op2: 0b11111, op3: 0, rn: 0, op4: 0 });
+test("BR / BLR / RET — the opcode is one 4 bit field at 24:21", () => {
+  const at = (op, rn) => enc("br_reg", { fixed1: 0b1101011, op, op2: 0b11111, op3: 0, rn, op4: 0 });
+
+  const br = at(0b0000, 0);
   assert.equal(br.Hex, "0xD61F0000");
   assert.equal(br.Instruction, "br x0");
 
-  const ret = enc("br_reg", { fixed1: 0b1101011, z: 0, op: 1, a: 0, op2: 0b11111, op3: 0, rn: 30, op4: 0 });
+  // BLR's own value used to be picked by elimination over a field that was
+  // not the opcode; this is the word an assembler actually emits.
+  const blr = at(0b0001, 0);
+  assert.equal(blr.Hex, "0xD63F0000");
+  assert.equal(blr.Instruction, "blr x0");
+
+  const ret = at(0b0010, 30);
   assert.equal(ret.Hex, "0xD65F03C0");
   assert.equal(ret.Instruction, "ret");
+  assert.equal(at(0b0010, 5).Instruction, "ret x5");
+});
 
-  const retOther = enc("br_reg", { fixed1: 0b1101011, z: 0, op: 1, a: 0, op2: 0b11111, op3: 0, rn: 5, op4: 0 });
-  assert.equal(retOther.Instruction, "ret x5");
+test("BR / BLR / RET decode from the words an assembler emits", () => {
+  assert.equal(dec("0xD61F0000").Instruction, "br x0");
+  assert.equal(dec("0xD63F0000").Instruction, "blr x0");
+  assert.equal(dec("0xD63F0060").Instruction, "blr x3");
+  assert.equal(dec("0xD65F03C0").Instruction, "ret");
 
-  const blr = enc("br_reg", { fixed1: 0b1101011, z: 0, op: 0b10, a: 0, op2: 0b11111, op3: 0, rn: 3, op4: 0 });
-  assert.equal(blr.Instruction, "blr x3");
+  // ERET sits at opc=0100 and is out of scope — but it is no longer BLR's
+  // slot, and it must not come back named as anything.
+  assert.equal(dec("0xD69F03E0").Instruction, "no instruction in scope has these fields");
 });
 
 test("LDUR / STUR, and LDR / STR pre/post-indexed", () => {
@@ -503,10 +526,24 @@ test("dp1src rejects a non-zero opcode2, and dp3src's widening multiplies requir
   assert.equal(smaddl32.Instruction, "no instruction in scope has these fields");
 });
 
-test("ldst_pair rejects opc=01 (a SIMD/FP pair) and idx=000 (STNP/LDNP)", () => {
-  const simdOpc = enc("ldst_pair", { opc: 0b01, fixed: 0b101, v: 0, idx: 0b010, l: 1, imm7: 0, rt2: 1, rn: 2, rt: 0 });
-  assert.equal(simdOpc.Instruction, "no instruction in scope has these fields");
+test("LDPSW — with V=0, opc=01 is a sign-extending pair, not a SIMD one", () => {
+  const pair = (opc, l, imm7) => enc("ldst_pair", { opc, fixed: 0b101, v: 0, idx: 0b010, l, imm7, rt2: 1, rn: 2, rt: 0 });
 
+  const ldpsw = pair(0b01, 1, 2);
+  // Two X destinations, but a 32 bit access — so the offset scales by 4,
+  // not by the 8 the destination width would suggest.
+  assert.equal(ldpsw.Instruction, "ldpsw x0, x1, [x2, #8]");
+  assert.match(ldpsw.Effect, /SignExtend/);
+
+  // A wide pair at the same offset field scales by 8, which is what makes
+  // the scale the row's business rather than the destination width's.
+  assert.equal(pair(0b10, 1, 2).Instruction, "ldp x0, x1, [x2, #16]");
+
+  // opc=01 with L=0 has no instruction: LDPSW is a load only.
+  assert.equal(pair(0b01, 0, 0).Instruction, "no instruction in scope has these fields");
+});
+
+test("ldst_pair rejects idx=000 (STNP/LDNP)", () => {
   const stnp = enc("ldst_pair", { opc: 0b10, fixed: 0b101, v: 0, idx: 0b000, l: 0, imm7: 0, rt2: 1, rn: 2, rt: 0 });
   assert.equal(stnp.Instruction, "no instruction in scope has these fields");
 });
@@ -690,10 +727,11 @@ function benignFields(inst) {
   // wrong for the sf:0 half of dp1src's pair.
   if (inst.sfOnly !== undefined) f.sf = inst.sfOnly;
   // The instruction tables key ldst_imm/ldst_regoffset by opc2, a 2 bit
-  // sub-field of the wider opc box; ldst_excl/atomic_ldop only name the
+  // sub-field of the wider opc box — markerFill has already placed the
+  // class's own marker bits above it; ldst_excl/atomic_ldop only name the
   // word/doubleword sizes; br_reg's op2/op3/op4 and sysmisc's Rt are fixed
   // marker values with no layout-level default.
-  if (cls === "ldst_imm") f.opc = ((f.opc ?? 0b111001) << 2) | (inst.opc2 ?? 0);
+  if (cls === "ldst_imm") f.opc = (f.opc ?? (0b111001 << 2)) | (inst.opc2 ?? 0);
   if (cls === "ldst_regoffset" || cls === "ldst_unscaled") f.opc = inst.opc2 ?? 0;
   if (cls === "ldst_excl" || cls === "atomic_ldop") f.size = 0b11;
   if (cls === "br_reg") { f.rn = 30; f.op2 = 0b11111; f.op3 = 0; f.op4 = 0; }
@@ -724,5 +762,88 @@ test("B.cond names every condition, including the reserved al/nv pair", () => {
   for (let cond = 0; cond < 16; cond++) {
     const got = enc("b_cond", { opc: 0b01010100, imm19: 0, cond });
     assert.equal(got.Instruction, `b.${a.condName(cond)} #0`);
+  }
+});
+
+// --- The gaps the suite had, one test each -------------------------------
+//
+// benignFields above deliberately never picks register 31, so the whole
+// SP-vs-ZR and alias-condition surface sits outside the exhaustive loop by
+// construction. These are that surface, and the Effect line, which nothing
+// used to read at all.
+
+test("register 31 in add/sub is SP or XZR depending on the form", () => {
+  // Immediate: 31 is SP, and only the S bit makes it a compare.
+  assert.equal(dec("0xD10043FF").Instruction, "sub sp, sp, #16");
+  assert.equal(dec("0x910043FF").Instruction, "add sp, sp, #16");
+  assert.equal(dec("0xF10043FF").Instruction, "cmp sp, #16");
+  assert.equal(dec("0xB10043FF").Instruction, "cmn sp, #16");
+
+  // Extended register: 31 is SP there too.
+  assert.equal(dec("0x8B2063FF").Instruction, "add sp, sp, x0, uxtx");
+
+  // Shifted register: no SP anywhere in the form.
+  assert.equal(dec("0x8B0203FF").Instruction, "add xzr, xzr, x2");
+  assert.equal(dec("0x8B0103E0").Instruction, "add x0, xzr, x1");
+  assert.equal(dec("0xCB0103E0").Instruction, "neg x0, x1");
+  assert.equal(dec("0xEB0103E0").Instruction, "negs x0, x1");
+  // CMP wins over NEGS when both would apply, the way an assembler prefers it.
+  assert.equal(dec("0xEB0103FF").Instruction, "cmp xzr, x1");
+});
+
+test("TST is an alias of ANDS and of nothing else", () => {
+  assert.equal(dec("0xEA02003F").Instruction, "tst x1, x2");
+  assert.equal(dec("0xEA22003F").Instruction, "bics xzr, x1, x2");
+  // The two words must not read the same — that was the whole problem.
+  assert.notEqual(dec("0xEA02003F").Instruction, dec("0xEA22003F").Instruction);
+  assert.match(dec("0xEA22003F").Effect, /~/);
+});
+
+test("the Effect line says what the condition-select aliases actually do", () => {
+  assert.equal(dec("0x9A9F17E0").Effect, "x0 = (eq) ? 1 : 0");
+  assert.equal(dec("0xDA9F03E0").Effect, "x0 = (ne) ? -1 : 0");
+  // The increment happens when the *named* condition holds: CINC Rd, Rn, cond
+  // is CSINC Rd, Rn, Rn, invert(cond), so the arms swap with the condition.
+  assert.equal(dec("0x9A810420").Effect, "x0 = (ne) ? x1 + 1 : x1");
+  assert.equal(dec("0xDA810020").Effect, "x0 = (ne) ? ~x1 : x1");
+  assert.equal(dec("0xDA810420").Effect, "x0 = (ne) ? -x1 : x1");
+});
+
+test("the decoder names an unknown field rather than guessing it", () => {
+  const unknownCond = values("aarch64-decode", { word: "01010100iiiiiiiiiiiiiiiiiii0cccc", read: "bits" });
+  assert.equal(unknownCond.Instruction, "b.<cond> variable i");
+  assert.match(unknownCond.Effect, /variable c/);
+
+  // The shift-type fields had the same slip, milder: an unreadable one used
+  // to print lsl. sf=1 opc=0001011 shift=xx 0 rm=x2 imm6=4 rn=x1 rd=x0.
+  const unknownShift = values("aarch64-decode", { word: "10001011xx0000100001000000100000", read: "bits" });
+  assert.equal(unknownShift.Instruction, "add x0, x1, x2, <shift> #4");
+});
+
+test("both cards word the same word the same way", () => {
+  // The encoder and the decoder compute the same answer from opposite ends;
+  // a reader moving a word between them should not have to notice. 15,103 of
+  // 50,211 sampled words used to read differently in the two cards.
+  let seed = 12345;
+  const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
+  let checked = 0;
+  for (let i = 0; i < 40000; i++) {
+    const word = ((next() << 1) ^ next()) >>> 0;
+    const res = run("aarch64-decode", { word: bits(word, 32), read: "bits" });
+    const sendable = extractSendableAarch64(res);
+    if (!sendable) continue;
+    const decoded = Object.fromEntries(res.fields.map((f) => [f.label, f.value]));
+    if (!decoded.Instruction || decoded.Instruction.startsWith("no instruction")) continue;
+    const encoded = values("aarch64-encode", sendable);
+    checked++;
+    assert.equal(encoded.Instruction, decoded.Instruction, `0x${word.toString(16)} instruction`);
+    assert.equal(encoded.Effect, decoded.Effect, `0x${word.toString(16)} effect`);
+  }
+  assert.ok(checked > 5000, `only ${checked} words were decodable — the sweep is not sweeping`);
+});
+
+test("the Effect line never carries a # — that is the Instruction line's", () => {
+  for (const [hex] of [["0xD10043FF"], ["0xF9400420"], ["0xA9BF7BFD"], ["0x54000000"], ["0xB8404420"]]) {
+    assert.doesNotMatch(dec(hex).Effect, /#/, hex);
   }
 });

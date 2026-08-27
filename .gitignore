@@ -11,6 +11,7 @@ docs/lib/htm.mjs
 docs/lib/preact.mjs
 docs/components/App.js
 docs/components/bits.js
+docs/components/palette.js
 docs/components/Card.js
 docs/components/Doc.js
 docs/components/folds.js

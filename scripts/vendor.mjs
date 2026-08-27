@@ -21,6 +21,7 @@ const FILES = [
   "lib/preact.mjs",
   "components/App.js",
   "components/bits.js",
+  "components/palette.js",
   "components/Card.js",
   "components/Doc.js",
   "components/folds.js",

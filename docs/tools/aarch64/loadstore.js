@@ -41,6 +41,11 @@ export function mnemonicFor(op, size) {
   return op; // ldrsb/ldrsh/ldrsw already spell their own size out
 }
 
+// unscaled turns a load/store mnemonic into its LDUR/STUR spelling: the `u`
+// goes after the first two letters, and everything the size added stays put
+// — sturb, ldurh, ldursw.
+export const unscaled = (name) => name.slice(0, 2) + "u" + name.slice(2);
+
 export const CLASSES = {
   // LDR/STR (unsigned immediate offset) — verified against `str x0,[x1]` =
   // 0xF9000000, `ldr x0,[x1]` = 0xF9400020, `ldr w0,[x1]` base = 0xB9400000,
@@ -167,7 +172,12 @@ export const INSTRUCTIONS = [
   })),
   ...LDST_OPS.flatMap(({ op, size, opc2, destWide, desc }) =>
     [0b00, 0b01, 0b11].map((idx) => ({
-      name: idx === 0b00 ? op.slice(0, 2) + "u" + op.slice(2) : mnemonicFor(op, size),
+      // The `u` goes into the sized name, not the raw one: splicing into
+      // LDST_OPS' own `str`/`ldr` skips mnemonicFor entirely, and with it
+      // the b/h that size 00/01 needs — so a one byte store came out named
+      // `stur`, as if it wrote four. (Halfword escaped only because the
+      // table spells strh/ldrh out itself.)
+      name: idx === 0b00 ? unscaled(mnemonicFor(op, size)) : mnemonicFor(op, size),
       class: "ldst_unscaled", size, opc2, idx, destWide,
       desc: desc.replace("addr", idx === 0b00 ? "Rn + imm" : "Rn, with writeback"),
     })),
@@ -180,6 +190,14 @@ export const INSTRUCTIONS = [
     name: l ? "ldp" : "stp", class: "ldst_pair", opc, idx, l, destWide: opc === 0b10,
     desc: l ? "Rt, Rt2 = M[addr], M[addr+size]" : "M[addr], M[addr+size] = Rt, Rt2",
   })))),
+  // opc=01 was rejected as "a SIMD/FP pair", but the class marker already
+  // pins V=0 — and with V=0, opc=01 is LDPSW: a pair of 32 bit loads sign
+  // extended into two X registers. So the destination is wide while the
+  // access, and therefore the offset's scale, stays 4.
+  ...[0b001, 0b010, 0b011].map((idx) => ({
+    name: "ldpsw", class: "ldst_pair", opc: 0b01, idx, l: 1, destWide: true, scale: 4, signed: true,
+    desc: "Rt, Rt2 = SignExtend(M32[addr]), SignExtend(M32[addr+4])",
+  })),
   { name: "stxr", class: "ldst_excl", o2: 0, o1: 0, o0: 0, l: 0, desc: "M[Rn] = Rt; Rs = 0 if the store succeeded, 1 if the exclusive monitor had already been cleared" },
   { name: "ldxr", class: "ldst_excl", o2: 0, o1: 0, o0: 0, l: 1, desc: "Rt = M[Rn]; opens the exclusive monitor for Rn" },
   { name: "stlxr", class: "ldst_excl", o2: 0, o1: 0, o0: 1, l: 0, desc: "M[Rn] = Rt with release ordering; Rs = 0/1 as stxr" },
@@ -208,7 +226,7 @@ export function find(cls, fields) {
     return INSTRUCTIONS.find((i) => i.class === cls && i.size === fields.size && i.opc2 === (fields.opc & 0b11) && i.idx === fields.idx) || null;
   }
   if (cls === "ldst_pair") {
-    if (fields.opc === 0b01 || fields.idx === 0b000) return null; // opc 01 is a SIMD/FP pair; idx 000 is STNP/LDNP
+    if (fields.idx === 0b000) return null; // STNP/LDNP, non-temporal, out of scope
     return INSTRUCTIONS.find((i) => i.class === cls && i.opc === fields.opc && i.idx === fields.idx && i.l === fields.l) || null;
   }
   if (cls === "ldst_excl") {

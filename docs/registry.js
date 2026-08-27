@@ -176,7 +176,7 @@ export const TOOLS = [
       {
         title: "Scope",
         kind: "note",
-        text: "The integer core and atomics a modern CPU needs for general-purpose, non-numeric code — everything a compiler emits for ordinary C/C++ that is not floating point, SIMD/vector, SVE, or system-register access (MRS/MSR): every integer data-processing family (immediate and register, including bitfield/extract, conditional select/compare, multiply/divide, shifts, and the register-count \"1/2/3-source\" families), every branch shape (PC-relative, register-indirect, compare/test-and-branch), the full load/store surface (unsigned/unscaled/indexed/register-offset/pair/exclusive/ordered/literal, signed loads included), barriers and the common hints, SVC/BRK/HLT, and the LSE atomics (CAS and the LDADD-shaped read-modify-writes, plus SWP). 28 classes, 244 named instruction forms in all — up from the original 9-class, 24-instruction core. Every field below is real AArch64; a handful of reserved sibling encodings (byte/halfword exclusive and CAS forms, the SIMD/FP-register load/store pair opc value, and so on) still classify correctly, they just have no named instruction, the same restraint the original core already applied to ADDS/SUBS/ANDS.",
+        text: "The integer core and atomics a modern CPU needs for general-purpose, non-numeric code — everything a compiler emits for ordinary C/C++ that is not floating point, SIMD/vector, SVE, or system-register access (MRS/MSR): every integer data-processing family (immediate and register, including bitfield/extract, conditional select/compare, multiply/divide, shifts, and the register-count \"1/2/3-source\" families), every branch shape (PC-relative, register-indirect, compare/test-and-branch), the full load/store surface (unsigned/unscaled/indexed/register-offset/pair/exclusive/ordered/literal, signed loads included), barriers and the common hints, SVC/BRK/HLT, and the LSE atomics (CAS and the LDADD-shaped read-modify-writes, plus SWP). 28 classes, 247 named instruction forms in all — up from the original 9-class, 24-instruction core. Every field below is real AArch64; a handful of reserved sibling encodings (byte/halfword exclusive and CAS forms, the non-temporal STNP/LDNP pair, the unprivileged LDTR/STTR family, ERET/DRPS and the pointer-authentication branches, and so on) still classify correctly, they just have no named instruction.",
       },
       {
         title: "Word layouts",
@@ -190,15 +190,15 @@ export const TOOLS = [
           ...layoutDoc("CBZ, CBNZ — compare and branch", "cbz_cbnz",
             "opc is 011010 with the low bit as CBZ/CBNZ. Rt is compared to 0, not stored to — width follows sf like every other register field."),
           ...layoutDoc("ADD, SUB — immediate", "addsub_imm",
-            "opc packs op (0=ADD,1=SUB), S (flags — always 0 in scope) and the fixed 100010. imm12 is shifted left 12 first when sh is set."),
+            "opc packs op (0=ADD,1=SUB), S (0/1 = ADD/ADDS, SUB/SUBS) and the fixed 100010. S is also half of the CMP/CMN alias condition: only the flag-setting forms alias, since with S=0 register 31 in Rd is SP rather than the zero register. imm12 is shifted left 12 first when sh is set."),
           ...layoutDoc("AND, ORR, EOR — immediate", "logical_imm",
-            "opc packs a 2 bit opc (00/01/10 = AND/ORR/EOR; 11 = ANDS, out of scope) and the fixed 100100. N, immr and imms together encode a bitmask immediate — see the note below."),
+            "opc packs a 2 bit opc (00/01/10/11 = AND/ORR/EOR/ANDS) and the fixed 100100. ANDS with Rd=11111 is the TST alias. N, immr and imms together encode a bitmask immediate — see the note below."),
           ...layoutDoc("MOVZ, MOVN, MOVK — move wide immediate", "movewide",
             "opc packs a 2 bit opc (00/10/11 = MOVN/MOVZ/MOVK; 01 is reserved) and the fixed 100101. hw × 16 is the shift imm16 is placed at."),
           ...layoutDoc("ADD, SUB — shifted register", "addsub_reg",
-            "opc packs op, S (always 0 in scope) and the fixed 01011. shiftop packs the 2 bit shift type over a bit that is 0 here — 1 means this is really the (out of scope) extended-register form sharing the same marker."),
+            "opc packs op, S (0/1 = ADD/ADDS, SUB/SUBS) and the fixed 01011. shiftop packs the 2 bit shift type over a bit that is 0 here — 1 means the extended-register form sharing the same marker, which is the separate class below. This is the one add/sub family with no SP access at all: 31 reads as xzr/wzr in rd, rn and rm alike, which is what makes NEG (SUB from the zero register) spellable."),
           ...layoutDoc("AND, ORR, EOR — shifted register", "logical_reg",
-            "opc packs a 2 bit opc and the fixed 01010. N negates Rm when set, turning AND/ORR/EOR into BIC/ORN/EON — out of scope, so N must be 0 here."),
+            "opc packs a 2 bit opc and the fixed 01010. N negates Rm when set, turning AND/ORR/EOR/ANDS into BIC/ORN/EON/BICS. Only ANDS aliases to TST — BICS has nowhere to put the negation in one, so it keeps its own name."),
           ...layoutDoc("LDR, STR — immediate, unsigned offset", "ldst_imm",
             "size picks the width (00/01/10/11 = byte/halfword/word/doubleword). opc packs the fixed 111001 with a 2 bit opc2 (00/01=STR/LDR, 10/11=the signed loads LDRSB/H/W). The byte offset is imm12 × the size in bytes."),
           ...layoutDoc("SBFM, BFM, UBFM — bitfield move", "bitfield",
@@ -222,13 +222,13 @@ export const TOOLS = [
           ...layoutDoc("TBZ, TBNZ — test bit and branch", "tbz_tbnz",
             "b5:b40 is a scrambled 6 bit bit-number — b5 alone also picks W (0) or X (1) for Rt, since a bit position of 32 or above only exists in a 64 bit register. imm14 is a word count, ±32 KiB reach."),
           ...layoutDoc("BR, BLR, RET — branch to register", "br_reg",
-            "op (2 bits: 00/01/10 = BR/RET/BLR) over the fixed 1101011 with Z and A (pointer authentication) both fixed 0. RET shows no operand when Rn is the default x30."),
+            "op is one 4 bit field at 24:21 (0000/0001/0010 = BR/BLR/RET) over the fixed 1101011. Its top bit is pinned 0 here: 01xx is ERET/DRPS and 1xxx the pointer-authentication variants, all out of scope. RET shows no operand when Rn is the default x30."),
           ...layoutDoc("LDUR, STUR, and pre/post-indexed LDR/STR", "ldst_unscaled",
             "Shares ldst_imm's size/opc2 table through a 9 bit signed imm9 instead of a scaled imm12. idx (00/01/11) picks unscaled-no-writeback (the LDUR/STUR spelling), post-indexed, or pre-indexed addressing; 10 is the unprivileged LDTR/STTR family, out of scope."),
           ...layoutDoc("LDR, STR — register offset", "ldst_regoffset",
             "Same size/opc2 table again, addressed as [Rn, Rm, extend #amount] instead of an immediate. option picks the extend type (UXTW/LSL/SXTW/SXTX only — the other four are reserved), S picks shift-by-0 or shift-by-the-access-size."),
           ...layoutDoc("LDP, STP — load/store pair", "ldst_pair",
-            "opc (00/10 = W/X pair; 01 is a SIMD/FP pair, out of scope) and L (0/1 = store/load) over the fixed 101. idx (001/010/011 = post-indexed/plain/pre-indexed) picks addressing the same way ldst_unscaled's does; 000 is the non-temporal STNP/LDNP, out of scope."),
+            "opc (00/10 = W/X pair; 01 with L=1 is LDPSW, a pair of 32 bit loads sign extended into X registers — the class marker already pins V=0, so nothing here is a SIMD/FP pair) and L (0/1 = store/load) over the fixed 101. The offset scales by the access size, so LDPSW scales by 4 despite its 64 bit destinations. idx (001/010/011 = post-indexed/plain/pre-indexed) picks addressing the same way ldst_unscaled's does; 000 is the non-temporal STNP/LDNP, out of scope."),
           ...layoutDoc("LDXR/STXR, LDAXR/STLXR, LDAR/STLR, CAS family", "ldst_excl",
             "One real encoding group for exclusive, ordered, and compare-and-swap access, told apart by o2/o1/o0/L — see the note below. Byte/halfword-sized forms (size 00/01) classify but are not named, the same trim ADDS/SUBS/ANDS gets in the original core."),
           ...layoutDoc("LDR — literal (PC-relative)", "ldst_literal",
@@ -236,7 +236,7 @@ export const TOOLS = [
           ...layoutDoc("LDADD/LDCLR/LDEOR/LDSET/LDSMAX/LDSMIN/LDUMAX/LDUMIN, SWP", "atomic_ldop",
             "Shares ldst_unscaled/regoffset's outer marker; bit 21 = 1 tells it apart from ldst_unscaled (0), and bits 11:10 = 00 tell it apart from ldst_regoffset (10) in turn. opc (4 bits) picks the operation; A and R are independent acquire/release flags, giving every op four ordering spellings (plain, ...L, ...A, ...AL)."),
           ...layoutDoc("Hints (NOP, YIELD, WFE, WFI, SEV, SEVL), DMB, DSB, ISB", "sysmisc",
-            "CRn (0010 vs 0011) tells hints from barriers apart within the same fixed 0xD503 prefix; op2 then picks which one. Rt is fixed 11111 throughout — none of these touch a general-purpose register."),
+            "CRn (0010 vs 0011) tells hints from barriers apart within the same fixed 0xD503 prefix; op2 then picks which one. CRm is part of what names a hint, but on a barrier it is the operand — the shareability domain and the accesses ordered (sy, ish, ishst, nsh, osh, ld, st and the rest), which is why dmb ish and dmb sy are the same instruction with different CRm. Rt is fixed 11111 throughout — none of these touch a general-purpose register."),
           ...layoutDoc("SVC, BRK, HLT", "excgen",
             "opc/LL over the fixed 0xD4 pick the three; opc2 (bits 4:2) is fixed 000 for all of them. imm16 is a plain immediate — a syscall number for SVC, a debugger-defined value for BRK/HLT."),
           {
@@ -288,7 +288,7 @@ export const TOOLS = [
       {
         title: "Registers",
         kind: "group",
-        text: "31 general-purpose registers, addressed as x0-x30 (64 bit) or w0-w30 (32 bit, the low half) depending on sf (or, where a class has no sf of its own, whatever this toolbox's own note on that class says decides it — size for the load/store families, destWide for signed loads and pairs, and so on). Register 31 is context dependent: the zero register (xzr/wzr) almost everywhere, but the stack pointer (sp) for rn and rd of the add/sub families, and always for a load/store base register — never for rm, and never for a plain register operand like CBZ's rt or a logical instruction's operands.",
+        text: "31 general-purpose registers, addressed as x0-x30 (64 bit) or w0-w30 (32 bit, the low half) depending on sf (or, where a class has no sf of its own, whatever this toolbox's own note on that class says decides it — size for the load/store families, destWide for signed loads and pairs, and so on). Register 31 is context dependent: the zero register (xzr/wzr) almost everywhere, but the stack pointer (sp) for rn and rd of the immediate and extended-register add/sub forms — not the shifted-register one, which has no SP access at all — and always for a load/store base register; never for rm, and never for a plain register operand like CBZ's rt or a logical instruction's operands.",
         sections: [
           {
             kind: "grid",
@@ -298,7 +298,8 @@ export const TOOLS = [
               { label: "31 reads as", mono: true, color: COLOR.rd },
             ],
             rows: [
-              ["rn, rd", "ADD/SUB (immediate, register, extended)", "sp"],
+              ["rn, rd", "ADD/SUB (immediate) and ADD/SUB (extended register)", "sp"],
+              ["rn, rd, rm", "ADD/SUB (shifted register) — no SP access in this form at all", "xzr / wzr"],
               ["rd", "AND/ORR/EOR (imm/reg), MOVZ/MOVN/MOVK, bitfield, extract, condition-select results", "xzr / wzr"],
               ["rn, rm", "AND/ORR/EOR (register), bitfield/extract sources", "xzr / wzr"],
               ["rn", "every load/store family — the base register, always 64 bit regardless of the access size", "sp"],
@@ -498,9 +499,9 @@ export const TOOLS = [
     name: "Instruction Encoder",
     family: "AArch64",
     description: "Type an instruction to fill the class and opcode boxes in, then the operands — or pick a class in the leftmost box and fill the whole row by hand. Every other box is real AArch64; the class box is this toolbox's own, since AArch64 has no single opcode field to type instead — see the Instruction Doc.",
-    // The picker matches on pickerLabel, not on the mnemonic: 60 mnemonics
+    // The picker matches on pickerLabel, not on the mnemonic: 61 mnemonics
     // here name more than one encoding (`ldr` alone is ten rows across four
-    // classes), so a bare-name lookup would silently reach 133 of the 244.
+    // classes), so a bare-name lookup would silently reach 136 of the 247.
     instructions: a.PICKER_INSTRUCTIONS,
     applyInstruction: a.applyInstruction,
     instructionHint: "movz, ldp, cbz, ldaddal…",
@@ -527,7 +528,8 @@ export const TOOLS = [
     sendLabel: "Edit in encoder →",
     extractSendable: extractSendableAarch64,
     inputs: [
-      { id: "word", placeholder: "1001000100000000000101000000000", format: "bits" },
+      // A whole word, and a real one: 0x91001C41, `add x1, x2, #7`.
+      { id: "word", placeholder: "10010001000000000001110001000001", format: "bits" },
       {
         id: "read",
         label: "Read as",

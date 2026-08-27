@@ -55,6 +55,23 @@ const HINTS = [
   { op2: 0b101, name: "sevl", desc: "signal an event to this core alone" },
 ];
 
+// BARRIER_DOMAINS is what CRm names on DMB/DSB: which shareability domain
+// the barrier covers, and which accesses it orders. Only `sy` used to exist
+// here, because the rows pinned CRm to 1111 — so `dmb ish`, the one a
+// compiler actually emits on every release store, read as "no instruction in
+// scope has these fields". The values not listed are reserved, and show as a
+// raw #imm rather than being given a name they do not have.
+export const BARRIER_DOMAINS = {
+  0b0001: "oshld", 0b0010: "oshst", 0b0011: "osh",
+  0b0101: "nshld", 0b0110: "nshst", 0b0111: "nsh",
+  0b1001: "ishld", 0b1010: "ishst", 0b1011: "ish",
+  0b1101: "ld", 0b1110: "st", 0b1111: "sy",
+};
+
+// ISB takes the same field but defines only SY in it.
+export const barrierOperand = (name, crm) =>
+  (name === "isb" ? (crm === 0b1111 ? "sy" : null) : BARRIER_DOMAINS[crm]) ?? `#${crm}`;
+
 const BARRIERS = [
   { op2: 0b100, name: "dsb", desc: "data synchronization barrier: wait for every earlier memory access to complete" },
   { op2: 0b101, name: "dmb", desc: "data memory barrier: order every earlier memory access before every later one" },
@@ -63,7 +80,8 @@ const BARRIERS = [
 
 export const INSTRUCTIONS = [
   ...HINTS.map(({ op2, name, desc }) => ({ name, class: "sysmisc", crn: 0b0010, crm: 0b0000, op2, desc })),
-  ...BARRIERS.map(({ op2, name, desc }) => ({ name, class: "sysmisc", crn: 0b0011, crm: 0b1111, op2, desc })),
+  // No crm on a barrier row: CRm is its operand, not part of what names it.
+  ...BARRIERS.map(({ op2, name, desc }) => ({ name, class: "sysmisc", crn: 0b0011, op2, desc })),
   { name: "svc", class: "excgen", opc: 0b000, ll: 0b01, desc: "raise a supervisor call exception, entering EL1" },
   { name: "brk", class: "excgen", opc: 0b001, ll: 0b00, desc: "raise a breakpoint exception (software breakpoint / debugger trap)" },
   { name: "hlt", class: "excgen", opc: 0b010, ll: 0b00, desc: "halt, entering debug state (used by debuggers and as a hard trap)" },
@@ -72,7 +90,10 @@ export const INSTRUCTIONS = [
 export function find(cls, fields) {
   if (cls === "sysmisc") {
     if (fields.rt !== 0b11111) return null; // Rt is fixed 11111 for every hint/barrier
-    return INSTRUCTIONS.find((i) => i.class === cls && i.crn === fields.crn && i.crm === fields.crm && i.op2 === fields.op2) || null;
+    // A hint is named by CRm as well as op2; a barrier's CRm is its domain
+    // operand, so a barrier row carries none and matches any value of it.
+    return INSTRUCTIONS.find((i) => i.class === cls && i.crn === fields.crn && i.op2 === fields.op2
+      && (i.crm === undefined || i.crm === fields.crm)) || null;
   }
   return INSTRUCTIONS.find((i) => i.class === cls && i.opc === fields.opc && i.ll === fields.ll) || null;
 }

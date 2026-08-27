@@ -26,6 +26,9 @@ jobs:
       # into docs/ — docs/ is otherwise never committed for the shared
       # framework files, this is where they come from on every deploy.
       - run: npm ci
+      # Nothing used to run these but a person typing `npm test`, so a bad
+      # word could be deployed with the suite red.
+      - run: npm test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
